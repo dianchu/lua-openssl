@@ -25,6 +25,7 @@
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
+#include "corona_auxiliar.h"
 #include "auxiliar.h"
 #if LUA_VERSION_NUM>501
 #define lua_objlen lua_rawlen
@@ -348,6 +349,8 @@ int openssl_register_ssl(lua_State* L);
 int openssl_register_engine(lua_State* L);
 
 LUA_FUNCTION(openssl_register_ocsp);
+
+LUA_API int luaopen_openssl(lua_State*L);
 
 #endif
 

@@ -797,34 +797,24 @@ LUA_FUNCTION(openssl_dh_compute_key)
     return ret;
 }
 /* }}} */
-static int g_init=0;
 
-void CRYPTO_thread_setup(void);
-void CRYPTO_thread_cleanup(void); 
 int luaopen_bn(lua_State *L);
+
 LUA_API int luaopen_openssl(lua_State*L)
 {
     char * config_filename;
-	CRYPTO_thread_setup();
-	CRYPTO_lock(CRYPTO_LOCK,CRYPTO_LOCK_ERR,__FILE__,__LINE__);
-    if(g_init==0)
-    {
-        g_init =  1;
-		
 
-        OpenSSL_add_all_ciphers();
-        OpenSSL_add_all_digests();
-		SSL_library_init();
+    OpenSSL_add_all_ciphers();
+    OpenSSL_add_all_digests();
+    SSL_library_init();
 
-        ERR_load_ERR_strings();
-        ERR_load_crypto_strings();
-        ERR_load_EVP_strings();
-		ERR_load_SSL_strings();
+    ERR_load_ERR_strings();
+    ERR_load_crypto_strings();
+    ERR_load_EVP_strings();
+    ERR_load_SSL_strings();
 
-		ENGINE_load_dynamic();
-		ENGINE_load_openssl();
-    }
-	CRYPTO_lock(CRYPTO_UNLOCK,CRYPTO_LOCK_ERR,__FILE__,__LINE__);
+    ENGINE_load_dynamic();
+    ENGINE_load_openssl();
 
     /* Determine default SSL configuration file */
     config_filename = getenv("OPENSSL_CONF");

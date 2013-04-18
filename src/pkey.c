@@ -21,6 +21,7 @@
 * Author:  george zhao <zhaozg(at)gmail.com>
 \*=========================================================================*/
 #include "openssl.h"
+#include "corona_auxiliar.h"
 #include "auxiliar.h"
 #ifndef OPENSSL_NO_EC
 #include "ec_lcl.h"
