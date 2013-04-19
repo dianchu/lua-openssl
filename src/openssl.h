@@ -350,7 +350,7 @@ int openssl_register_engine(lua_State* L);
 
 LUA_FUNCTION(openssl_register_ocsp);
 
-LUA_API int luaopen_openssl(lua_State*L);
+LUA_API int luaopen_plugin_openssl(lua_State*L);
 
 #endif
 
