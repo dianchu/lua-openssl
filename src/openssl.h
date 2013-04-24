@@ -1,3 +1,6 @@
+#if ( defined( _WIN32 ) || defined( _WIN64 ) )
+#	define WIN32_LEAN_AND_MEAN
+#endif
 /*
    +----------------------------------------------------------------------+
    | PHP Version 5                                                        |
@@ -350,7 +353,13 @@ int openssl_register_engine(lua_State* L);
 
 LUA_FUNCTION(openssl_register_ocsp);
 
-LUA_API int luaopen_plugin_openssl(lua_State*L);
+#if ( defined( _WIN32 ) || defined( _WIN64 ) )
+#	define DLL_EXPORT	__declspec( dllexport )
+#else
+#	define DLL_EXPORT
+#endif
+
+extern DLL_EXPORT int luaopen_plugin_openssl(lua_State*L);
 
 #endif
 
