@@ -1,4 +1,4 @@
-/**/ //ADD COMMENT: MODIFIED BY ALBERT YALE!!!!!!!
+// albert: I modified this to avoid a collision with luasocket/src/auxiliar.h.
 #ifndef _CORONA_AUXILIAR_H
 #define _CORONA_AUXILIAR_H
 
