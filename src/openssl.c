@@ -800,7 +800,7 @@ LUA_FUNCTION(openssl_dh_compute_key)
 
 int luaopen_bn(lua_State *L);
 
-LUA_API int luaopen_plugin_openssl(lua_State*L)
+LUA_API int luaopen_plugin_openssl_core(lua_State*L)
 {
     char * config_filename;
 
