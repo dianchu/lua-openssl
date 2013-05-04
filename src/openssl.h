@@ -359,7 +359,7 @@ LUA_FUNCTION(openssl_register_ocsp);
 #	define DLL_EXPORT
 #endif
 
-extern DLL_EXPORT int luaopen_plugin_openssl_core(lua_State*L);
+extern DLL_EXPORT int luaopen_plugin_openssl(lua_State*L);
 
 #endif
 
