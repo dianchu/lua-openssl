@@ -7,6 +7,9 @@
 
 		https://github.com/zhaozg/lua-openssl
 
+			commit d26054bfb3d1c69e7805510564bf406843c8d28d
+			Date:   Fri Mar 29 12:20:02 2013 +0800
+
 	Corona depends on luasocket.
 	luasocket has an auxiliar.c and auxiliar.h.
 	lua-openssl also has its own auxiliar.c and auxiliar.h.
