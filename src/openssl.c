@@ -26,6 +26,13 @@
 #include <openssl/engine.h>
 #include <openssl/opensslconf.h>
 
+//// From luasec.
+//
+#include "../../sdk-luasocket/src/context.h"
+#include "../../sdk-luasocket/src/ssl.h"
+//
+////
+
 #if LUA_VERSION_NUM>501
 int luaL_typerror (lua_State *L, int narg, const char *tname) {
   const char *msg = lua_pushfstring(L, "%s expected, got %s",
@@ -860,6 +867,13 @@ LUA_API int luaopen_plugin_openssl(lua_State*L)
 	/* third part */
 	luaopen_bn(L);
 	lua_setfield(L, -2, "bn");
+
+	//// From luasec.
+	//
+	//luaopen_ssl_core(L);
+	//luaopen_ssl_context(L);
+	//
+	////
 
     return 1;
 }
