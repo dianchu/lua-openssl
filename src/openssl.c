@@ -30,6 +30,24 @@
 //
 #include "../../sdk-luasocket/src/context.h"
 #include "../../sdk-luasocket/src/ssl.h"
+
+#include "CoronaLua.h"
+#include "CoronaMacros.h"
+
+CORONA_EXPORT int CoronaPluginLuaLoad_plugin_luasec_ssl( lua_State *L );
+CORONA_EXPORT int CoronaPluginLuaLoad_plugin_luasec_https( lua_State *L );
+
+int
+luaopen_plugin_luasec_ssl( lua_State *L )
+{
+	return CoronaLuaOpenModule( L, CoronaPluginLuaLoad_plugin_luasec_ssl );
+}
+
+int
+luaopen_plugin_luasec_https( lua_State *L )
+{
+	return CoronaLuaOpenModule( L, CoronaPluginLuaLoad_plugin_luasec_https );
+}
 //
 ////
 
@@ -870,8 +888,11 @@ LUA_API int luaopen_plugin_openssl(lua_State*L)
 
 	//// From luasec.
 	//
-	//luaopen_ssl_core(L);
-	//luaopen_ssl_context(L);
+	luaopen_ssl_core(L);
+	luaopen_ssl_context(L);
+
+	CoronaLuaRegisterModuleLoader( L, "plugin_luasec_ssl", luaopen_plugin_luasec_ssl, 0 );
+	CoronaLuaRegisterModuleLoader( L, "plugin_luasec_https", CoronaPluginLuaLoad_plugin_luasec_https, 0 );
 	//
 	////
 
