@@ -888,25 +888,27 @@ LUA_API int luaopen_plugin_openssl(lua_State*L)
 
 	//// From luasec.
 	//
-	int top = lua_gettop( L );
 	{
-		// IMPORTANT: These two functions leave a total of 4 objects on the Lua
-		// stack. This is BAD. We only want to return ONE "openssl" object.
-		// A GOOD thing about these functions is that the objects they create
-		// are global and won't be garbage collected. Therefore, we can simply
-		// reset the top of the Lua stack with lua_settop() at the end of this
-		// function.
-		luaopen_ssl_core(L);
-		luaopen_ssl_context(L);
+		int top = lua_gettop( L );
+		{
+			// IMPORTANT: These two functions leave a total of 4 objects on the Lua
+			// stack. This is BAD. We only want to return ONE "openssl" object.
+			// A GOOD thing about these functions is that the objects they create
+			// are global and won't be garbage collected. Therefore, we can simply
+			// reset the top of the Lua stack with lua_settop() at the end of this
+			// function.
+			luaopen_ssl_core(L);
+			luaopen_ssl_context(L);
 
-		// These functions DON'T leave anything on the Lua stack. They only
-		// register objects that can be require'd later.
-		CoronaLuaRegisterModuleLoader( L, "plugin_luasec_ssl", luaopen_plugin_luasec_ssl, 0 );
-		CoronaLuaRegisterModuleLoader( L, "plugin_luasec_https", CoronaPluginLuaLoad_plugin_luasec_https, 0 );
-		//
-		////
+			// These functions DON'T leave anything on the Lua stack. They only
+			// register objects that can be require'd later.
+			CoronaLuaRegisterModuleLoader( L, "plugin_luasec_ssl", luaopen_plugin_luasec_ssl, 0 );
+			CoronaLuaRegisterModuleLoader( L, "plugin_luasec_https", CoronaPluginLuaLoad_plugin_luasec_https, 0 );
+			//
+			////
+		}
+		lua_settop( L, top );
 	}
-	lua_settop( L, top );
 
 	// The total number of object put on the Lua stack by this function.
     return 1;
