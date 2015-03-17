@@ -833,11 +833,19 @@ int luaopen_bn(lua_State *L);
 
 LUA_API int luaopen_plugin_openssl(lua_State*L)
 {
+	/* This static variable was added by Corona Labs. */
+	/* Used to prevent SSL_library_init() from being called more than once, which would cause a crash. */
+	static int sWasOpenSSLInitialized = 0;
+
     char * config_filename;
 
     OpenSSL_add_all_ciphers();
     OpenSSL_add_all_digests();
-    SSL_library_init();
+	if (!sWasOpenSSLInitialized)
+	{
+		SSL_library_init();
+		sWasOpenSSLInitialized = 1;
+	}
 
     ERR_load_ERR_strings();
     ERR_load_crypto_strings();
