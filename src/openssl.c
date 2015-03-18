@@ -833,27 +833,49 @@ int luaopen_bn(lua_State *L);
 
 LUA_API int luaopen_plugin_openssl(lua_State*L)
 {
-	/* This static variable was added by Corona Labs. */
-	/* Used to prevent SSL_library_init() from being called more than once, which would cause a crash. */
-	static int sWasOpenSSLInitialized = 0;
-
     char * config_filename;
 
-    OpenSSL_add_all_ciphers();
-    OpenSSL_add_all_digests();
-	if (!sWasOpenSSLInitialized)
+#if 0
+	OpenSSL_add_all_ciphers();
+	OpenSSL_add_all_digests();
+	SSL_library_init();
+#else
+	/* This code was written by Corona Labs to replace the original code up above.
+	 * It fixes a crash which can occur when initializing OpenSSL more than once.
+	 * Note: We can detect if the library has not been initialized if a SHA1 digest hasn't been loaded yet.
+	 */
+	if (EVP_get_digestbyname(SSL_TXT_SHA1) == NULL)
 	{
+		OpenSSL_add_all_ciphers();
+		OpenSSL_add_all_digests();
 		SSL_library_init();
-		sWasOpenSSLInitialized = 1;
 	}
+#endif
+
+	/* This line was added by Corona Labs to prevent a crash which can happen when loading strings more than once. */
+	ERR_free_strings();
 
     ERR_load_ERR_strings();
     ERR_load_crypto_strings();
     ERR_load_EVP_strings();
     ERR_load_SSL_strings();
 
+#if 0
     ENGINE_load_dynamic();
     ENGINE_load_openssl();
+#else
+	/* This code was written by Corona Labs to replace the original code up above.
+	 * It fixes a crash which can occur when loading OpenSSL's engines more than once.
+	 */
+	if (ENGINE_by_id("dynamic") == NULL)
+	{
+		ENGINE_load_dynamic();
+	}
+	if (ENGINE_by_id("openssl") == NULL)
+	{
+		ENGINE_load_openssl();
+	}
+#endif
 
     /* Determine default SSL configuration file */
     config_filename = getenv("OPENSSL_CONF");
