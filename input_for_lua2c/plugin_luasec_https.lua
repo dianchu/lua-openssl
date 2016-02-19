@@ -1,6 +1,6 @@
 ----------------------------------------------------------------------------
--- LuaSec 0.4.1
--- Copyright (C) 2009-2011 PUC-Rio
+-- LuaSec 0.5.1
+-- Copyright (C) 2009-2015 PUC-Rio
 --
 -- Author: Pablo Musa
 -- Author: Tomas Guisasola
@@ -24,8 +24,8 @@ local getmetatable = getmetatable
 
 module("plugin_luasec_ssl.https")
 
-_VERSION   = "0.4.1"
-_COPYRIGHT = "LuaSec 0.4.1 - Copyright (C) 2009-2011 PUC-Rio"
+_VERSION   = "0.5.1"
+_COPYRIGHT = "LuaSec 0.5.1 - Copyright (C) 2009-2015 PUC-Rio"
 
 -- Default settings
 PORT = 443

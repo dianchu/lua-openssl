@@ -1,6 +1,6 @@
 ------------------------------------------------------------------------------
--- LuaSec 0.4.1
--- Copyright (C) 2006-2011 Bruno Silvestre
+-- LuaSec 0.5.1
+-- Copyright (C) 2006-2015 Bruno Silvestre
 --
 ------------------------------------------------------------------------------
 
@@ -8,14 +8,19 @@ module("plugin_luasec_ssl", package.seeall)
 
 require("plugin_luasec_ssl.core")
 require("plugin_luasec_ssl.context")
+local x509 = require("plugin_luasec_ssl.x509")
 
-_VERSION   = "0.4.1"
-_COPYRIGHT = "LuaSec 0.4.1 - Copyright (C) 2006-2011 Bruno Silvestre\n" .. 
-             "LuaSocket 2.0.2 - Copyright (C) 2004-2007 Diego Nehab"
+_VERSION   = "0.5.1"
+_COPYRIGHT = core.copyright()
 
--- Export functions
-rawconnection = core.rawconnection
-rawcontext    = context.rawcontext
+-- Export
+rawconnection   = core.rawconnection
+rawcontext      = context.rawcontext
+loadcertificate = x509.load
+
+-- We must prevent the contexts to be collected before the connections,
+-- otherwise the C registry will be cleared.
+local registry = setmetatable({}, {__mode="k"})
 
 --
 --
@@ -44,6 +49,12 @@ function newcontext(cfg)
    if not succ then return nil, msg end
    -- Load the key
    if cfg.key then
+      if cfg.password and
+         type(cfg.password) ~= "function" and
+         type(cfg.password) ~= "string"
+      then
+         return nil, "invalid password type"
+      end
       succ, msg = context.loadkey(ctx, cfg.key, cfg.password)
       if not succ then return nil, msg end
    end
@@ -57,6 +68,11 @@ function newcontext(cfg)
       succ, msg = context.locations(ctx, cfg.cafile, cfg.capath)
       if not succ then return nil, msg end
    end
+   -- Set SSL ciphers
+   if cfg.ciphers then
+      succ, msg = context.setcipher(ctx, cfg.ciphers)
+      if not succ then return nil, msg end
+   end
    -- Set the verification options
    succ, msg = optexec(context.setverify, cfg.verify, ctx)
    if not succ then return nil, msg end
@@ -68,6 +84,29 @@ function newcontext(cfg)
       succ, msg = context.setdepth(ctx, cfg.depth)
       if not succ then return nil, msg end
    end
+
+   -- NOTE: Setting DH parameters and elliptic curves needs to come after
+   -- setoptions(), in case the user has specified the single_{dh,ecdh}_use
+   -- options.
+
+   -- Set DH parameters
+   if cfg.dhparam then
+      if type(cfg.dhparam) ~= "function" then
+         return nil, "invalid DH parameter type"
+      end
+      context.setdhparam(ctx, cfg.dhparam)
+   end
+   -- Set elliptic curve
+   if cfg.curve then
+      succ, msg = context.setcurve(ctx, cfg.curve)
+      if not succ then return nil, msg end
+   end
+   -- Set extra verification options
+   if cfg.verifyext and ctx.setverifyext then
+      succ, msg = optexec(ctx.setverifyext, cfg.verifyext, ctx)
+      if not succ then return nil, msg end
+   end
+
    return ctx
 end
 
@@ -86,7 +125,46 @@ function wrap(sock, cfg)
    if s then
       core.setfd(s, sock:getfd())
       sock:setfd(core.invalidfd)
+      registry[s] = ctx
       return s
    end
    return nil, msg 
 end
+
+--
+-- Extract connection information.
+--
+local function info(ssl, field)
+  local str, comp, err, protocol
+  comp, err = core.compression(ssl)
+  if err then
+    return comp, err
+  end
+  -- Avoid parser
+  if field == "compression" then
+    return comp
+  end
+  local info = {compression = comp}
+  str, info.bits, info.algbits, protocol = core.info(ssl)
+  if str then
+    info.cipher, info.protocol, info.key,
+    info.authentication, info.encryption, info.mac =
+        string.match(str, 
+          "^(%S+)%s+(%S+)%s+Kx=(%S+)%s+Au=(%S+)%s+Enc=(%S+)%s+Mac=(%S+)")
+    info.export = (string.match(str, "%sexport%s*$") ~= nil)
+  end
+  if protocol then
+    info.protocol = protocol
+  end
+  if field then
+    return info[field]
+  end
+  -- Empty?
+  return ( (next(info)) and info )
+end
+
+--
+-- Set method for SSL connections.
+--
+core.setmethod("info", info)
+

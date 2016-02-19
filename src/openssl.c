@@ -28,6 +28,7 @@
 
 //// From luasec.
 //
+#include "../../sdk-luasocket/src/x509.h"
 #include "../../sdk-luasocket/src/context.h"
 #include "../../sdk-luasocket/src/ssl.h"
 
@@ -934,7 +935,8 @@ LUA_API int luaopen_plugin_openssl(lua_State*L)
 			// reset the top of the Lua stack with lua_settop() at the end of this
 			// function.
 			luaopen_ssl_core(L);
-			luaopen_ssl_context(L);
+            luaopen_ssl_context(L);
+            luaopen_ssl_x509(L);
 
 			// These functions DON'T leave anything on the Lua stack. They only
 			// register objects that can be require'd later.
