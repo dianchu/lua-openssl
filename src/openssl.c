@@ -941,7 +941,7 @@ LUA_API int luaopen_plugin_openssl(lua_State*L)
 			// These functions DON'T leave anything on the Lua stack. They only
 			// register objects that can be require'd later.
 			CoronaLuaRegisterModuleLoader( L, "plugin_luasec_ssl", luaopen_plugin_luasec_ssl, 0 );
-			CoronaLuaRegisterModuleLoader( L, "plugin_luasec_https", CoronaPluginLuaLoad_plugin_luasec_https, 0 );
+			CoronaLuaRegisterModuleLoader( L, "plugin_luasec_https", luaopen_plugin_luasec_https, 0 ); // CoronaPluginLuaLoad_plugin_luasec_https, 0 );
 			//
 			////
 		}

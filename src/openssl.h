@@ -36,6 +36,7 @@ int luaL_typerror (lua_State *L, int narg, const char *tname);
 #endif
 
 #include <assert.h>
+#include <string.h>
 
 /* OpenSSL includes */
 #include <openssl/evp.h>
@@ -49,7 +50,7 @@ int luaL_typerror (lua_State *L, int narg, const char *tname);
 #include <openssl/pkcs12.h>
 #include <openssl/opensslv.h>
 
-#define LOPENSSL_VERSION_STR	"0.0.5"
+#define LOPENSSL_VERSION_STR	"0.0.6"
 
 #if OPENSSL_VERSION_NUMBER >= 0x10000000L
 #include <openssl/lhash.h>
