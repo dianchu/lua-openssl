@@ -19,15 +19,12 @@ local function generate(options, version)
   print([[
 #ifndef LSEC_OPTIONS_H
 #define LSEC_OPTIONS_H
-
 /*--------------------------------------------------------------------------
- * LuaSec 0.5.1
- * Copyright (C) 2006-2015 Bruno Silvestre
+ * LuaSec 0.6
+ * Copyright (C) 2006-2016 Bruno Silvestre
  *
  *--------------------------------------------------------------------------*/
-
 #include <openssl/ssl.h>
-
 /* If you need to generate these options again, see options.lua */
 ]])
   printf([[
@@ -54,7 +51,6 @@ typedef struct ssl_option_s ssl_option_t;
   print([[  {NULL, 0L}]])
   print([[
 };
-
 #endif
 ]])
 end
