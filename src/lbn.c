@@ -15,13 +15,14 @@
 
 #include "lua.h"
 #include "lauxlib.h"
+#include "compat.h"
 
 #define lua_boxpointer(L,u) \
 	(*(void **)(lua_newuserdata(L, sizeof(void *))) = (u))
 
 #define MYNAME		"bn"
 #define MYVERSION	MYNAME " library for " LUA_VERSION " / Nov 2010 / "\
-			"based on OpenSSL " SHLIB_VERSION_NUMBER
+			"based on " OPENSSL_VERSION_TEXT
 #define MYTYPE		"openssl.bn"
 
 #ifndef BN_is_negative
@@ -381,7 +382,7 @@ static int Bisprime(lua_State *L)		/** isprime(x,[checks]) */
 {
  int checks=luaL_optint(L,2,BN_prime_checks);
  BIGNUM *a=Bget(L,1);
- lua_pushboolean(L,BN_is_prime_fasttest(a,checks,NULL,ctx,NULL,1));
+ lua_pushboolean(L,BN_is_prime(a,checks,NULL,ctx,NULL)>0);
  return 1;
 }
 
