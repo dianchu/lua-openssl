@@ -367,7 +367,7 @@ LUA_FUNCTION(openssl_evp_decrypt) {
     size_t input_len = 0;
     const char *input = luaL_checklstring(L, 2, &input_len);
     size_t key_len = 0;
-    const char *key = luaL_optlstring(L, 3, NULL, &key_len); /* can be NULL */
+    const char *key = luaL_checklstring(L, 3, &key_len);
     size_t iv_len = 0;
     const char *iv = luaL_optlstring(L, 4, NULL, &iv_len); /* can be NULL */
     ENGINE *e = lua_isnoneornil(L,5) ? NULL : CHECK_OBJECT(5, ENGINE, "openssl.engine");
