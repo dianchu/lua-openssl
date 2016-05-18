@@ -30,7 +30,11 @@
 //
 #include "../../sdk-luasocket/src/x509.h"
 #include "../../sdk-luasocket/src/context.h"
+#if ! defined(WIN32)
 #include "../../sdk-luasocket/src/ssl.h"
+#else
+int luaopen_ssl_core(lua_State *L);
+#endif
 
 #include "CoronaLua.h"
 #include "CoronaMacros.h"
