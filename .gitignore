@@ -1,6 +1,4 @@
-(^|/)*\.xcuserdatad($|/)
-
-syntax: glob
+xcuserdata/
 
 # Backup files left behind by Emacs
 *~
