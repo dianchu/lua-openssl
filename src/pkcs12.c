@@ -1,157 +1,157 @@
-/*
-   +----------------------------------------------------------------------+
-   | PHP Version 5                                                        |
-   +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2012 The PHP Group                                |
-   +----------------------------------------------------------------------+
-   | This source file is subject to version 3.01 of the PHP license,      |
-   | that is bundled with this package in the file LICENSE, and is        |
-   | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
-   | If you did not receive a copy of the PHP license and are unable to   |
-   | obtain it through the world-wide-web, please send a note to          |
-   | license@php.net so we can mail you a copy immediately.               |
-   +----------------------------------------------------------------------+
+/***
+pkcs12 module to create and parse PKCS#12(PFX) files.
+
+@module pkcs12
+@usage
+  pkcs12 = require('openssl').pkcs12
 */
-/*=========================================================================*\
-* PKCS12 routines
-* lua-openssl toolkit
-*
-* This product includes PHP software, freely available from <http://www.php.net/software/>
-* Author:  george zhao <zhaozg(at)gmail.com>
-\*=========================================================================*/
+
 #include "openssl.h"
+#include "private.h"
 
-/* PKCS12 module for the Lua/OpenSSL binding.
- *
- * The functions in this module can be used to load, parse, export, verify... functions.
- * pkcs12_read()
- * pkcs12_export()
- */
+/***
+create and export pkcs12 data
 
-/*  openssl.pkcs12_export(openssl.x509 x509, openssl.evp_pkey pkey, string pass [[, string friendname ], table extracerts]) -> string{{{1
-
-	Creates and exports a PKCS to file *
-
-	x509 is openssl.x509 object.
-	pkey is openssl.evp_pkey object.
-	pass is pkcs12 file password.
-	option paramaers
-	   friendly_name:	frinedly_name for pkcs11
-	   extracerts:		extra certs in cert chains
-	file is option
+@function export
+@tparam x509 cert
+@tparam evp_pkey pkey
+@tparam string password
+@tparam[opt=nil] string friendlyname
+@tparam[opt] table|stak_of_x509 extracerts
+@tparam[opt] boolean keytype flag to private key used by MSIE, true for KEY_SIG, or KEY_EX
+@treturn string data
 */
-
-LUA_FUNCTION(openssl_pkcs12_export)
+static LUA_FUNCTION(openssl_pkcs12_export)
 {
-    X509 * cert = CHECK_OBJECT(1, X509, "openssl.x509");
-    EVP_PKEY *priv_key = CHECK_OBJECT(2, EVP_PKEY, "openssl.evp_pkey");
-    char * pass = (char*)luaL_checkstring(L,3);
-    int top = lua_gettop(L);
+  X509 * cert = CHECK_OBJECT(1, X509, "openssl.x509");
+  EVP_PKEY *priv_key = CHECK_OBJECT(2, EVP_PKEY, "openssl.evp_pkey");
+  char * pass = (char*)luaL_checkstring(L, 3);
+  int keytype = 0;
+  int top = lua_gettop(L);
 
-    BIO * bio_out = NULL;
-    PKCS12 * p12 = NULL;
-    const char * friendly_name = NULL;
-    STACK_OF(X509) *ca = NULL;
+  BIO * bio_out = NULL;
+  PKCS12 * p12 = NULL;
+  const char * friendly_name = NULL;
+  STACK_OF(X509) *ca = NULL;
+  int ret = 0;
 
-    if (top>3) {
-        if(lua_isstring(L,4))
-            friendly_name = lua_tostring(L,4);
-        else if(lua_isuserdata(L, 4))
-            ca = CHECK_OBJECT(4, STACK_OF(X509), "openssl.stack_of_x509");
-        else
-            luaL_typerror(L,4,"must be a string or openssl.stack_of_x509 object");
+  luaL_argcheck(L, openssl_pkey_is_private(priv_key), 2, "must be private key");
 
-        if (top>4)
-            ca = CHECK_OBJECT(5, STACK_OF(X509), "openssl.stack_of_x509");
-    }
-
-    if (cert && !X509_check_private_key(cert, priv_key)) {
-        luaL_error(L,"private key does not correspond to cert");
-    }
-
-    /* end parse extra config */
-
-    /*PKCS12 *PKCS12_create(char *pass, char *name, EVP_PKEY *pkey, X509 *cert, STACK_OF(X509) *ca,
-                                       int nid_key, int nid_cert, int iter, int mac_iter, int keytype);*/
-
-    p12 = PKCS12_create(pass, (char*)friendly_name, priv_key, cert, ca, 0, 0, 0, 0, 0);
-    if (!p12)
-        luaL_error(L,"PKCS12_careate failed,pleases get more error info");
-
-    bio_out = BIO_new(BIO_s_mem());
-    if (i2d_PKCS12_bio(bio_out, p12))  {
-        BUF_MEM *bio_buf;
-
-        BIO_get_mem_ptr(bio_out, &bio_buf);
-        lua_pushlstring(L,bio_buf->data, bio_buf->length);
-        BIO_free(bio_out);
-        PKCS12_free(p12);
-        return 1;
-    }
-    PKCS12_free(p12);
-
-    return 0;
-}
-/* }}} */
-
-
-/*  openssl.pkcs12_read(string pkcs12, string pass) -> table|nil{{{1
-
-	Parses a PKCS12 to an table
-	pkcs12 are file path or pkcs11 data
-	. if it starts with file:// then it will be interpreted as the path to that pkcs12
-	. it will be interpreted as the pkcs12 data
-
-*/
-
-LUA_FUNCTION(openssl_pkcs12_read)
-{
-    const char *pass, *zp12;
-    size_t zp12_len;
-    PKCS12 * p12 = NULL;
-    EVP_PKEY * pkey = NULL;
-    X509 * cert = NULL;
-    STACK_OF(X509) * ca = NULL;
-    BIO * bio_in = NULL;
-    int base64 = 0;
-	int olb64 = 0;
-    BIO * b64 = NULL;
-
-    zp12 = luaL_checklstring(L, 1, &zp12_len);
-    pass = luaL_checkstring(L, 2);
-    if(!lua_isnoneornil(L,3))
-        base64 = auxiliar_checkboolean(L,3);
-	if(!lua_isnoneornil(L,4))
-		olb64 = auxiliar_checkboolean(L,4);
-
-    bio_in = BIO_new_mem_buf((void*)zp12, zp12_len);
-    if(base64)
+  if (top > 3)
+  {
+    int idx = 4;
+    if (lua_isstring(L, idx))
     {
-        if ((b64=BIO_new(BIO_f_base64())) == NULL)
-            return 0;
-        if (olb64) BIO_set_flags(b64,BIO_FLAGS_BASE64_NO_NL);
-        bio_in=BIO_push(b64,bio_in);
+      friendly_name = lua_tostring(L, idx);
+      idx++;
     }
 
-    if(d2i_PKCS12_bio(bio_in, &p12) && PKCS12_parse(p12, pass, &pkey, &cert, &ca)) {
-        lua_newtable(L);
-
-        PUSH_OBJECT(cert,"openssl.x509");
-        lua_setfield(L,-2,"cert");
-
-        PUSH_OBJECT(pkey,"openssl.evp_pkey");
-        lua_setfield(L,-2,"pkey");
-
-        PUSH_OBJECT(ca,"openssl.stack_of_x509");
-        lua_setfield(L,-2,"extracerts");
-
-        return 1;
+    if (lua_istable(L, idx))
+    {
+      ca = openssl_sk_x509_fromtable(L, idx);
+      if (ca == NULL)
+        luaL_argerror(L, idx, "must be table contians x509 object as cacets");
+      idx++;
     }
-    return 0;
+
+    if (lua_isboolean(L, idx))
+    {
+      keytype = lua_toboolean(L, idx) ? KEY_SIG : KEY_EX;
+    }
+  }
+
+  if (cert && !X509_check_private_key(cert, priv_key))
+  {
+    luaL_error(L, "private key does not correspond to cert");
+  }
+
+  /* end parse extra config */
+
+  /*
+   * PKCS12 *PKCS12_create(char *pass,
+   *                       char *name,
+   *                       EVP_PKEY *pkey,
+   *                       X509 *cert,
+   *                       STACK_OF(X509) *ca,
+   *                       int nid_key,
+   *                       int nid_cert,
+   *                       int iter,
+   *                       int mac_iter,
+   *                       int keytype);
+   */
+
+  p12 = PKCS12_create(pass, (char*)friendly_name, priv_key, cert, ca, NID_aes_128_cbc, 0, 0, 0, keytype);
+  if (!p12)
+    luaL_error(L, "PKCS12_create failed,pleases get more error info");
+
+  bio_out = BIO_new(BIO_s_mem());
+  if (i2d_PKCS12_bio(bio_out, p12))
+  {
+    BUF_MEM *bio_buf;
+
+    BIO_get_mem_ptr(bio_out, &bio_buf);
+    lua_pushlstring(L, bio_buf->data, bio_buf->length);
+    ret = 1;
+  }
+  if (ca!=NULL)
+    sk_X509_pop_free(ca, X509_free);
+  BIO_free(bio_out);
+  PKCS12_free(p12);
+
+  return ret;
 }
-/* }}} */
 
+/***
+parse pkcs12 data as lua table
 
-/* }}} */
+@function read
+@tparam string|bio input pkcs12 content
+@tparam string password for pkcs12
+@treturn table result contain 'cert', 'pkey', 'extracerts' keys
+*/
+static LUA_FUNCTION(openssl_pkcs12_read)
+{
+  PKCS12 * p12 = NULL;
+  EVP_PKEY * pkey = NULL;
+  X509 * cert = NULL;
+  STACK_OF(X509) * ca = NULL;
+  int ret = 0;
 
+  BIO * bio_in = load_bio_object(L, 1);
+  const char *pass = luaL_checkstring(L, 2);
+
+  if (d2i_PKCS12_bio(bio_in, &p12) && PKCS12_parse(p12, pass, &pkey, &cert, &ca))
+  {
+    lua_newtable(L);
+
+    AUXILIAR_SETOBJECT(L, cert, "openssl.x509", -1, "cert");
+    AUXILIAR_SETOBJECT(L, pkey, "openssl.evp_pkey", -1, "pkey");
+    if (ca != NULL) {
+      lua_pushstring(L, "extracerts");
+      openssl_sk_x509_totable(L, ca);
+      lua_rawset(L, -3);
+      sk_X509_pop_free(ca, X509_free);
+    }
+
+    ret = 1;
+  }
+  BIO_free(bio_in);
+  PKCS12_free(p12);
+  return ret;
+}
+
+static luaL_Reg R[] =
+{
+  {"read",    openssl_pkcs12_read },
+  {"export",  openssl_pkcs12_export },
+
+  {NULL,    NULL}
+};
+
+int luaopen_pkcs12(lua_State *L)
+{
+  lua_newtable(L);
+  luaL_setfuncs(L, R, 0);
+
+  return 1;
+}

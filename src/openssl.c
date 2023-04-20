@@ -1,966 +1,629 @@
-/*
-   +----------------------------------------------------------------------+
-   | PHP Version 5                                                        |
-   +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2012 The PHP Group                                |
-   +----------------------------------------------------------------------+
-   | This source file is subject to version 3.01 of the PHP license,      |
-   | that is bundled with this package in the file LICENSE, and is        |
-   | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
-   | If you did not receive a copy of the PHP license and are unable to   |
-   | obtain it through the world-wide-web, please send a note to          |
-   | license@php.net so we can mail you a copy immediately.               |
-   +----------------------------------------------------------------------+
+/***
+Openssl binding for Lua, provide openssl full function in lua.
+
+@module openssl
+@usage
+  openssl = require('openssl')
 */
-/*=========================================================================*\
-* main routines
-* lua-openssl toolkit
-*
-* This product includes PHP software, freely available from <http://www.php.net/software/>
-* Author:  george zhao <zhaozg(at)gmail.com>
-\*=========================================================================*/
+
 #include "openssl.h"
 #include <openssl/ssl.h>
 #include <openssl/asn1.h>
 #include <openssl/engine.h>
 #include <openssl/opensslconf.h>
+#include "private.h"
 
-//// From luasec.
-//
-#include "../../sdk-luasocket/src/x509.h"
-#include "../../sdk-luasocket/src/context.h"
-#if ! defined(WIN32)
-#include "../../sdk-luasocket/src/ssl.h"
-#else
-int luaopen_ssl_core(lua_State *L);
-#endif
-
-#include "CoronaLua.h"
-#include "CoronaMacros.h"
-
-CORONA_EXPORT int CoronaPluginLuaLoad_plugin_luasec_ssl( lua_State *L );
-CORONA_EXPORT int CoronaPluginLuaLoad_plugin_luasec_https( lua_State *L );
-
-int
-luaopen_plugin_luasec_ssl( lua_State *L )
-{
-	return CoronaLuaOpenModule( L, CoronaPluginLuaLoad_plugin_luasec_ssl );
-}
-
-int
-luaopen_plugin_luasec_https( lua_State *L )
-{
-	return CoronaLuaOpenModule( L, CoronaPluginLuaLoad_plugin_luasec_https );
-}
-//
-////
-
-#if LUA_VERSION_NUM>501
-int luaL_typerror (lua_State *L, int narg, const char *tname) {
-  const char *msg = lua_pushfstring(L, "%s expected, got %s",
-                                    tname, luaL_typename(L, narg));
-  return luaL_argerror(L, narg, msg);
-} 
-#endif
-
+/***
+get lua-openssl version
+@function version
+@tparam[opt] boolean format result will be number when set true, or string
+@treturn lua-openssl version, lua version, openssl version
+*/
 static int openssl_version(lua_State*L)
 {
-		lua_pushstring(L, LOPENSSL_VERSION_STR);
-		lua_pushstring(L, LUA_VERSION);
-		lua_pushstring(L, OPENSSL_VERSION_TEXT);
-		return 3;
-}
-/* true global; readonly after module startup */
-char default_ssl_conf_filename[MAX_PATH];
-
-
-typedef struct {
-	const char* name;
-	int value;
-} namedInteger;
-
-static namedInteger consts[] = {
-	{"LEAVE",       -1},
-	{"ENGINE_F_DYNAMIC_CTRL",					 ENGINE_F_DYNAMIC_CTRL},
-	{"ENGINE_F_DYNAMIC_GET_DATA_CTX",			 ENGINE_F_DYNAMIC_GET_DATA_CTX},
-	{"ENGINE_F_DYNAMIC_LOAD",					 ENGINE_F_DYNAMIC_LOAD},
-	{"ENGINE_F_DYNAMIC_SET_DATA_CTX",			 ENGINE_F_DYNAMIC_SET_DATA_CTX},
-	{"ENGINE_F_ENGINE_ADD",						 ENGINE_F_ENGINE_ADD},
-	{"ENGINE_F_ENGINE_BY_ID",					 ENGINE_F_ENGINE_BY_ID},
-	{"ENGINE_F_ENGINE_CMD_IS_EXECUTABLE",		 ENGINE_F_ENGINE_CMD_IS_EXECUTABLE},
-	{"ENGINE_F_ENGINE_CTRL",					 ENGINE_F_ENGINE_CTRL},
-	{"ENGINE_F_ENGINE_CTRL_CMD",				 ENGINE_F_ENGINE_CTRL_CMD},
-	{"ENGINE_F_ENGINE_CTRL_CMD_STRING",			 ENGINE_F_ENGINE_CTRL_CMD_STRING},
-	{"ENGINE_F_ENGINE_FINISH",					 ENGINE_F_ENGINE_FINISH},
-	{"ENGINE_F_ENGINE_FREE_UTIL",				 ENGINE_F_ENGINE_FREE_UTIL},
-	{"ENGINE_F_ENGINE_GET_CIPHER",				 ENGINE_F_ENGINE_GET_CIPHER},
-	{"ENGINE_F_ENGINE_GET_DEFAULT_TYPE",		 ENGINE_F_ENGINE_GET_DEFAULT_TYPE},
-	{"ENGINE_F_ENGINE_GET_DIGEST",				 ENGINE_F_ENGINE_GET_DIGEST},
-	{"ENGINE_F_ENGINE_GET_NEXT",				 ENGINE_F_ENGINE_GET_NEXT},
-	{"ENGINE_F_ENGINE_GET_PREV",				 ENGINE_F_ENGINE_GET_PREV},
-	{"ENGINE_F_ENGINE_INIT",					 ENGINE_F_ENGINE_INIT},
-	{"ENGINE_F_ENGINE_LIST_ADD",				 ENGINE_F_ENGINE_LIST_ADD},
-	{"ENGINE_F_ENGINE_LIST_REMOVE",				 ENGINE_F_ENGINE_LIST_REMOVE},
-	{"ENGINE_F_ENGINE_LOAD_PRIVATE_KEY",		 ENGINE_F_ENGINE_LOAD_PRIVATE_KEY},
-	{"ENGINE_F_ENGINE_LOAD_PUBLIC_KEY",			 ENGINE_F_ENGINE_LOAD_PUBLIC_KEY},
-	{"ENGINE_F_ENGINE_LOAD_SSL_CLIENT_CERT",	 ENGINE_F_ENGINE_LOAD_SSL_CLIENT_CERT},
-	{"ENGINE_F_ENGINE_NEW",						 ENGINE_F_ENGINE_NEW},
-	{"ENGINE_F_ENGINE_REMOVE",					 ENGINE_F_ENGINE_REMOVE},
-	{"ENGINE_F_ENGINE_SET_DEFAULT_STRING",		 ENGINE_F_ENGINE_SET_DEFAULT_STRING},
-	{"ENGINE_F_ENGINE_SET_DEFAULT_TYPE",		 ENGINE_F_ENGINE_SET_DEFAULT_TYPE},
-	{"ENGINE_F_ENGINE_SET_ID",					 ENGINE_F_ENGINE_SET_ID},
-	{"ENGINE_F_ENGINE_SET_NAME",				 ENGINE_F_ENGINE_SET_NAME},
-	{"ENGINE_F_ENGINE_TABLE_REGISTER",			 ENGINE_F_ENGINE_TABLE_REGISTER},
-	{"ENGINE_F_ENGINE_UNLOAD_KEY",				 ENGINE_F_ENGINE_UNLOAD_KEY},
-	{"ENGINE_F_ENGINE_UNLOCKED_FINISH",			 ENGINE_F_ENGINE_UNLOCKED_FINISH},
-	{"ENGINE_F_ENGINE_UP_REF",					 ENGINE_F_ENGINE_UP_REF},
-	{"ENGINE_F_INT_CTRL_HELPER",				 ENGINE_F_INT_CTRL_HELPER},
-	{"ENGINE_F_INT_ENGINE_CONFIGURE",			 ENGINE_F_INT_ENGINE_CONFIGURE},
-	{"ENGINE_F_INT_ENGINE_MODULE_INIT",			 ENGINE_F_INT_ENGINE_MODULE_INIT},
-	{"ENGINE_F_LOG_MESSAGE",					 ENGINE_F_LOG_MESSAGE},
-	{"ENGINE_METHOD_RSA",	 	ENGINE_METHOD_RSA},
-	{"ENGINE_METHOD_DSA",		ENGINE_METHOD_DSA},
-	{"ENGINE_METHOD_DH",		ENGINE_METHOD_DH},
-	{"ENGINE_METHOD_RAND",	ENGINE_METHOD_RAND},
-	{"ENGINE_METHOD_ECDH",	ENGINE_METHOD_ECDH},
-	{"ENGINE_METHOD_ECDSA",	ENGINE_METHOD_ECDSA},
-	{"ENGINE_METHOD_CIPHERS",	ENGINE_METHOD_CIPHERS},
-	{"ENGINE_METHOD_DIGESTS",	ENGINE_METHOD_DIGESTS},
-	{"ENGINE_METHOD_STORE",	ENGINE_METHOD_STORE},
-	{"ENGINE_METHOD_ALL",		ENGINE_METHOD_ALL},
-	{"ENGINE_METHOD_NONE",	ENGINE_METHOD_NONE},
-
-	{NULL,	-1}
-};
-
-void setNamedIntegers(lua_State* L, namedInteger* p) {
-	while(p->name) {
-		lua_pushinteger(L, p->value);
-		lua_setfield(L, -2, p->name);
-		p++;
-	}
+  int num = lua_isnone(L, 1) ? 0 : auxiliar_checkboolean(L, 1);
+  if (num)
+  {
+    lua_pushinteger(L, LOPENSSL_VERSION_NUM);
+    lua_pushinteger(L, LUA_VERSION_NUM);
+#ifdef LIBRESSL_VERSION_NUMBER
+    lua_pushinteger(L, LIBRESSL_VERSION_NUMBER);
+#else
+    lua_pushinteger(L, OPENSSL_VERSION_NUMBER);
+#endif
+  }
+  else
+  {
+    lua_pushstring(L, LOPENSSL_VERSION);
+    lua_pushstring(L, LUA_VERSION);
+    lua_pushstring(L, OPENSSL_VERSION_TEXT);
+  }
+  return 3;
 }
 
-int openssl_topointer(lua_State*L){
-	void* p = NULL;
-	if(lua_isuserdata(L, 1))
-		p = *(void**)lua_touserdata(L,1);
-	else if(lua_islightuserdata(L, 1)){
-		p = lua_touserdata(L,1);
-	}
-	if(p)
-		lua_pushlightuserdata(L, p);
-	else
-		lua_pushnil(L);
-	return 1;
+/***
+hex encode or decode string
+@function hex
+@tparam string str
+@tparam[opt=true] boolean encode true to encoed, false to decode
+@treturn string
+*/
+static LUA_FUNCTION(openssl_hex)
+{
+  size_t l = 0;
+  const char* s = luaL_checklstring(L, 1, &l);
+  int encode = lua_isnone(L, 2) ? 1 : lua_toboolean(L, 2);
+  char* h = NULL;
+
+  if (l == 0)
+  {
+    lua_pushstring(L, "");
+    return 1;
+  }
+  if (encode)
+  {
+    h = OPENSSL_malloc(2 * l + 1);
+    l = bin2hex((const unsigned char *)s, h, l);
+  }
+  else
+  {
+    h = OPENSSL_malloc(l / 2 + 1);
+    l = hex2bin(s, (unsigned char *)h, l);
+  };
+  lua_pushlstring(L, (const char*)h, l);
+  OPENSSL_free(h);
+
+  return 1;
 }
 
+/***
+base64 encode or decode
+@function base64
+@tparam string|bio input
+@tparam[opt=true] boolean encode true to encoed, false to decode
+@tparam[opt=true] boolean NO_NL true with newline, false without newline
+@treturn string
+*/
+static LUA_FUNCTION(openssl_base64)
+{
+  BIO *inp = load_bio_object(L, 1);
+  int encode = lua_isnone(L, 2) ? 1 : lua_toboolean(L, 2);
+  int nonl = lua_isnone(L, 3) ? BIO_FLAGS_BASE64_NO_NL
+             : (lua_toboolean(L, 3) ? BIO_FLAGS_BASE64_NO_NL : 0);
+  BIO *b64 = BIO_new(BIO_f_base64());
+  BIO *out = BIO_new(BIO_s_mem());
+  BUF_MEM* mem = {0};
+  int ret = 0;
 
-const BIT_STRING_BITNAME reason_flags[] = {
-	{0, "Unused", "unused"},
-	{1, "Key Compromise", "keyCompromise"},
-	{2, "CA Compromise", "CACompromise"},
-	{3, "Affiliation Changed", "affiliationChanged"},
-	{4, "Superseded", "superseded"},
-	{5, "Cessation Of Operation", "cessationOfOperation"},
-	{6, "Certificate Hold", "certificateHold"},
-	{7, "Privilege Withdrawn", "privilegeWithdrawn"},
-	{8, "AA Compromise", "AACompromise"},
-	{-1, NULL, NULL}
-};
+  BIO_set_flags(b64, nonl);
+  if (encode)
+  {
+    BIO_push(b64, out);
+    BIO_get_mem_ptr(inp, &mem);
+    BIO_write(b64, mem->data, mem->length);
+    (void)BIO_flush(b64);
+  }
+  else
+  {
+    char inbuf[512];
+    int inlen;
+    BIO_push(b64, inp);
+    while ((inlen = BIO_read(b64, inbuf, 512)) > 0)
+      BIO_write(out, inbuf, inlen);
+    (void)BIO_flush(out);
+  }
 
-const int reason_num = sizeof(reason_flags)/sizeof(BIT_STRING_BITNAME) - 1;
+  BIO_get_mem_ptr(out, &mem);
+  if (mem->length > 0)
+  {
+    lua_pushlstring(L, mem->data, mem->length);
+    ret = 1;
+  }
+  BIO_free_all(b64);
+  if (encode)
+    BIO_free(inp);
+  else
+    BIO_free(out);
+  return ret;
+}
 
+static void list_callback(const OBJ_NAME *obj, void *arg)
+{
+  lua_State *L = (lua_State *)arg;
+  int idx = (int)lua_rawlen(L, -1);
+  lua_pushstring(L, obj->name);
+  lua_rawseti(L, -2, idx + 1);
+}
 
-/* {{{ openssl_functions[]
- */
-static const luaL_Reg eay_functions[] = {
-	{"topointer",			openssl_topointer	},
-    /* pkey */
-    {"pkey_read",			openssl_pkey_read	},
-    {"pkey_new",			openssl_pkey_new	},
+/***
+get method names
+@function list
+@tparam string type support 'cipher','digests','pkeys','comps'
+@treturn table as array
+*/
+static LUA_FUNCTION(openssl_list)
+{
+  static int options[] =
+  {
+    OBJ_NAME_TYPE_MD_METH,
+    OBJ_NAME_TYPE_CIPHER_METH,
+    OBJ_NAME_TYPE_PKEY_METH,
+    OBJ_NAME_TYPE_COMP_METH
+  };
+  static const char *names[] = {"digests", "ciphers", "pkeys", "comps", NULL};
+  int type = auxiliar_checkoption (L, 1, NULL, names, options);
+  lua_createtable(L, 0, 0);
+  OBJ_NAME_do_all_sorted(type, list_callback, L);
+  return 1;
+}
 
-    /* x.509 cert funcs */
-    {"x509_read",			openssl_x509_read	},
-    {"sk_x509_read",			openssl_sk_x509_read	},
-    {"sk_x509_new",			openssl_sk_x509_new	},
+/***
+get last or given error infomation
 
+Most lua-openssl function or methods return nil or false when error or
+failed, followed by string type error _reason_ and number type error _code_,
+_code_ can pass to openssl.error() to get more error information.
 
-    /* CSR funcs */
-    {"csr_new",				openssl_csr_new	},
-    {"csr_read",			openssl_csr_read	},
+@function error
+@tparam[opt] number error, default use ERR_get_error() return value
+@treturn number errcode
+@treturn string reason
+@treturn string library name
+@treturn string function name
+@treturn boolean is this is fatal error
+*/
+static LUA_FUNCTION(openssl_error_string)
+{
+  unsigned long val = ERR_get_error();
+  if (val==0)
+    return 0;
 
-    /* CRL funcs */
-    {"crl_new",				openssl_crl_new	},
-    {"crl_read",			openssl_crl_read	},
+  val = (unsigned long)luaL_optinteger(L, 1, val);
 
-    /* cipher/digest functions */
-    {"get_digest",			openssl_get_digest},
-    {"get_cipher",			openssl_get_cipher},
+  lua_pushstring (L, ERR_reason_error_string(val));
+  lua_pushstring (L, ERR_lib_error_string   (val));
+  lua_pushinteger(L, val);
 
-    /* misc function */
-    {"random_bytes",		openssl_random_bytes	},
-    {"error_string",		openssl_error_string	},
-    {"object_create",		openssl_object_create	},
-    {"bio_new_file",		openssl_bio_new_file	},
-    {"bio_new_mem",			openssl_bio_new_mem	   },
-	{"bio_new_accept",		openssl_bio_new_accept },
-
-    {"sign",				openssl_sign	},
-    {"verify",				openssl_verify	},
-    {"seal",				openssl_seal	},
-    {"open",				openssl_open	},
-
-    /* PKCS12 funcs */
-    {"pkcs12_export",		openssl_pkcs12_export	},
-    {"pkcs12_read",			openssl_pkcs12_read	},
-
-    /* for S/MIME handling */
-    {"pkcs7_read",			openssl_pkcs7_read	},
-    {"pkcs7_verify",		openssl_pkcs7_verify	},
-    {"pkcs7_decrypt",		openssl_pkcs7_decrypt	},
-    {"pkcs7_sign",			openssl_pkcs7_sign		},
-    {"pkcs7_encrypt",		openssl_pkcs7_encrypt	},
-
-    {"dh_compute_key",		openssl_dh_compute_key	},
-
-#ifdef OPENSSL_HAVE_TS
-    /* timestamp handling */
-    {"ts_req_new",		openssl_ts_req_new	},
-    {"ts_req_d2i",		openssl_ts_req_d2i	},
-    {"ts_resp_d2i",		openssl_ts_resp_d2i	},
-    {"ts_resp_ctx_new",		openssl_ts_resp_ctx_new	},
-    {"ts_verify_ctx_new",	openssl_ts_verify_ctx_new	},
+#if (OPENSSL_VERSION_NUMBER < 0x30000000L)
+  lua_pushstring (L, ERR_func_error_string  (val));
+#else
+  lua_pushnil(L);
 #endif
 
-	{"engine",			openssl_engine},
+#ifdef ERR_FATAL_ERROR
+    lua_pushboolean(L, ERR_FATAL_ERROR      (val));
+#else
+  lua_pushnil(L);
+#endif
+
+  return 5;
+}
+
+static LUA_FUNCTION(openssl_clear_error)
+{
+  ERR_clear_error();
+  return 0;
+}
+
+static LUA_FUNCTION(openssl_errors)
+{
+  int ret = 0;
+  BIO *out = BIO_new(BIO_s_mem());
+  if(out)
+  {
+    BUF_MEM* mem;
+
+    ERR_print_errors(out);
+    BIO_get_mem_ptr(out, &mem);
+    lua_pushlstring(L, mem->data, mem->length);
+    BIO_free(out);
+
+    ERR_clear_error();
+    ret = 1;
+  }
+  return ret;
+}
+
+/***
+mixes the num bytes at buf into the PRNG state.
+@function rand_add
+@tparam string seed data to seed random generator
+@tparam number entropy the lower bound of an estimate of how much randomness is contained in buf, measured in bytes.
+*/
+static int openssl_random_add(lua_State*L)
+{
+  size_t num = 0;
+  const void *buf = luaL_checklstring(L, 1, &num);
+  double entropy = luaL_optinteger(L, 2, num);
+
+  RAND_add(buf, num, entropy);
+  return 0;
+}
+
+/***
+load rand seed from file
+@function rand_load
+@tparam[opt=nil] string file path to laod seed, default openssl management
+@treturn boolean result
+*/
+static int openssl_random_load(lua_State*L)
+{
+  const char *file = luaL_optstring(L, 1, NULL);
+  char buffer[MAX_PATH];
+  int ret = 0, len = luaL_optinteger(L, 2, 2048);
+
+  if (file == NULL)
+    file = RAND_file_name(buffer, sizeof buffer);
+  ret = RAND_load_file(file, len);
+
+  lua_pushboolean(L, ret);
+  return 1;
+}
+
+/***
+save rand seed to file
+@function rand_write
+@tparam[opt=nil] string file path to save seed, default openssl management
+@treturn bool result
+*/
+static int openssl_random_write(lua_State *L)
+{
+  const char *file = luaL_optstring(L, 1, NULL);
+  char buffer[MAX_PATH];
+  int ret = 0;
+
+  if (file == NULL)
+    file = RAND_file_name(buffer, sizeof buffer);
+#ifndef OPENSSL_NO_EGD
+  ret = RAND_egd(file);
+  /* we try if the given filename is an EGD socket.
+     if it is, we don't write anything back to the file.
+   */
+#endif
+  if (ret!=1) ret = RAND_write_file(file);
+
+  return openssl_pushresult(L, ret);
+}
+
+/***
+get random generator state
+@function rand_status
+@tparam boolean result true for sucess
+*/
+static int openssl_random_status(lua_State *L)
+{
+  lua_pushboolean(L, RAND_status());
+  return 1;
+}
+
+/***
+get random bytes
+@function random
+@tparam number length
+@treturn string
+*/
+static LUA_FUNCTION(openssl_random_bytes)
+{
+  long length = luaL_checkint(L, 1);
+
+  char *buffer = NULL;
+  int ret = 0;
+
+  luaL_argcheck(L, length > 0, 1, "must greater than 0");
+
+  buffer = malloc(length + 1);
+  ret = RAND_bytes((byte*)buffer, length);
+  if (ret == 1)
+  {
+    lua_pushlstring(L, buffer, length);
+  }
+  free(buffer);
+  return ret==1 ? 1 : openssl_pushresult(L, ret);
+}
+
+/***
+set FIPS mode
+@function FIPS_mode
+@tparam boolean fips true enable FIPS mode, false disable it.
+@treturn boolean success
+*/
+
+/***
+get FIPS mode
+@function FIPS_mode
+@treturn boolean return true when FIPS mode enabled, false when FIPS mode disabled.
+*/
+static int openssl_fips_mode(lua_State *L)
+{
+  int ret =0;
+#if !defined(LIBRESSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER < 0x30000000L)
+  int on = 0;
+  FIPS_mode_set(0);
+  if(lua_isnone(L, 1))
+  {
+    lua_pushboolean(L, FIPS_mode());
+    ret = 1;
+  }
+  else
+  {
+    on = auxiliar_checkboolean(L, 1);
+    ret = FIPS_mode_set(on);
+    ret = openssl_pushresult(L, ret);
+  }
+#endif
+
+  return ret;
+}
+
+#ifndef OPENSSL_NO_CRYPTO_MDEBUG
+static int openssl_mem_leaks(lua_State*L)
+{
+  BIO *bio = BIO_new(BIO_s_mem());
+  BUF_MEM* mem;
+
+  CRYPTO_mem_leaks(bio);
+  BIO_get_mem_ptr(bio, &mem);
+  lua_pushlstring(L, mem->data, mem->length);
+  BIO_free(bio);
+  return 1;
+}
+#endif
+
+/***
+get openssl engine object
+@function engine
+@tparam string engine_id
+@treturn engine
+*/
+static const luaL_Reg eay_functions[] =
+{
+  {"version",     openssl_version},
+  {"list",        openssl_list},
+  {"hex",         openssl_hex},
+  {"base64",      openssl_base64},
+#ifndef OPENSSL_NO_CRYPTO_MDEBUG
+  {"mem_leaks",   openssl_mem_leaks},
+#endif
+  {"rand_status", openssl_random_status},
+  {"rand_add",    openssl_random_add},
+  {"rand_load",   openssl_random_load},
+  {"rand_write",  openssl_random_write},
+  {"random",      openssl_random_bytes},
+
+  {"clear_error", openssl_clear_error},
+  {"error",       openssl_error_string},
+  {"errors",      openssl_errors},
+  {"engine",      openssl_engine},
+  {"FIPS_mode",   openssl_fips_mode},
+
+  {NULL, NULL}
+};
+
+#if defined(OPENSSL_THREADS)
+void CRYPTO_thread_setup(void);
+void CRYPTO_thread_cleanup(void);
+#endif
+
+static void openssl_finalize()
+{
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if !defined(LIBRESSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER < 0x30000000L)
+  FIPS_mode_set(0);
+#endif
+
+  OBJ_cleanup();
+  EVP_cleanup();
+  ENGINE_cleanup();
+  RAND_cleanup();
+
+#if OPENSSL_VERSION_NUMBER >= 0x10002000L && !defined(LIBRESSL_VERSION_NUMBER)
+  SSL_COMP_free_compression_methods();
+#endif
+#if !defined(OPENSSL_NO_COMP)
+  COMP_zlib_cleanup();
+#endif
+
+
+#if OPENSSL_VERSION_NUMBER < 0x10000000L
+  ERR_remove_state(0);
+#elif OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+  ERR_remove_thread_state(NULL);
+#endif
+#if defined(OPENSSL_THREADS)
+  CRYPTO_thread_cleanup();
+#endif
+  CRYPTO_THREADID_set_callback(NULL);
+  CRYPTO_set_locking_callback(NULL);
+
+  CRYPTO_cleanup_all_ex_data();
+  ERR_free_strings();
+
+  CONF_modules_free();
+  CONF_modules_unload(1);
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  OSSL_PROVIDER_unload("legacy");
+  OSSL_PROVIDER_unload("default");
+#endif
+
+#ifndef OPENSSL_NO_CRYPTO_MDEBUG
+#if !(defined(OPENSSL_NO_STDIO) || defined(OPENSSL_NO_FP_API))
+#if defined(LIBRESSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10101000L
+  CRYPTO_mem_leaks_fp(stderr);
+#else
+  if(CRYPTO_mem_leaks_fp(stderr)!=1)
+  {
+    fprintf(stderr,
+            "Please report a bug on https://github.com/zhaozg/lua-openssl."
+            "And if can, please provide a reproduce method and minimal code.\n"
+            "\n\tThank You.");
+  }
+#endif
+#endif /* OPENSSL_NO_STDIO or OPENSSL_NO_FP_API */
+#endif /* OPENSSL_NO_CRYPTO_MDEBUG */
+#endif /* OPENSSL_VERSION_NUMBER < 0x10100000L or defined(LIBRESSL_VERSION_NUMBER) */
+}
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+static OSSL_PROVIDER* legacy = NULL;
+static OSSL_PROVIDER* openssl= NULL;
+
+void openssl_atexit()
+{
+  if (legacy)
+    OSSL_PROVIDER_unload(legacy);
+  if (openssl)
+    OSSL_PROVIDER_unload(openssl);
+}
+#endif
+
+static void openssl_initialize() {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+#if defined(OPENSSL_THREADS)
+  CRYPTO_thread_setup();
+#endif
+
+  OpenSSL_add_all_ciphers();
+  OpenSSL_add_all_digests();
+  SSL_library_init();
+
+  ERR_load_ERR_strings();
+  ERR_load_EVP_strings();
+  ERR_load_crypto_strings();
+  ERR_load_SSL_strings();
+#endif
+
+#ifndef OPENSSL_NO_ENGINE
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+  ENGINE_load_openssl();
+#else
+  OPENSSL_init_crypto(OPENSSL_INIT_ENGINE_OPENSSL, NULL);
+  OPENSSL_init_ssl(OPENSSL_INIT_ENGINE_ALL_BUILTIN
+                  |OPENSSL_INIT_LOAD_CONFIG, NULL);
+#endif
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+  ENGINE_load_builtin_engines();
+#endif
+#endif
+
+#ifdef LOAD_ENGINE_CUSTOM
+  LOAD_ENGINE_CUSTOM
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  legacy = OSSL_PROVIDER_load(NULL, "legacy");
+  openssl = OSSL_PROVIDER_load(NULL, "default");
+  atexit(openssl_atexit);
+#endif
+}
+
+#if defined(OPENSSL_THREADS) && !defined(OPENSSL_SYS_WIN32)
+#include <pthread.h>
+static pthread_once_t openssl_is_initialized = PTHREAD_ONCE_INIT;
+static pthread_once_t openssl_is_finalized = PTHREAD_ONCE_INIT;
+#endif
+
+static int luaclose_openssl(lua_State *L)
+{
+#if defined(OPENSSL_THREADS) && !defined(OPENSSL_SYS_WIN32)
+  (void) pthread_once(&openssl_is_finalized, openssl_finalize);
+#else
+  openssl_finalize();
+#endif
+  return 0;
+}
+
+LUALIB_API int luaopen_openssl(lua_State*L)
+{
+#if defined(OPENSSL_THREADS) && !defined(OPENSSL_SYS_WIN32)
+  (void) pthread_once(&openssl_is_initialized, openssl_initialize);
+#else
+  openssl_initialize();
+#endif
+
+  lua_newtable(L);
+
+  luaL_newmetatable(L, "openssl");
+  lua_pushcfunction(L, luaclose_openssl);
+  lua_setfield(L, -2, "__gc");
+  lua_setmetatable(L, -2);
+
+  luaL_setfuncs(L, eay_functions, 0);
+
+  openssl_register_lhash(L);
+  openssl_register_engine(L);
+
+  luaopen_bio(L);
+  lua_setfield(L, -2, "bio");
+
+  luaopen_asn1(L);
+  lua_setfield(L, -2, "asn1");
+
+
+  luaopen_digest(L);
+  lua_setfield(L, -2, "digest");
+
+  luaopen_cipher(L);
+  lua_setfield(L, -2, "cipher");
+
+  luaopen_hmac(L);
+  lua_setfield(L, -2, "hmac");
+
+  luaopen_hmac(L);
+  lua_setfield(L, -2, "mac");
+
+  luaopen_pkey(L);
+  lua_setfield(L, -2, "pkey");
+
 #ifdef EVP_PKEY_EC
-    {"list_curve_name",	openssl_ec_list_curve_name },
-#endif
-	{"ssl_ctx_new",		openssl_ssl_ctx_new },
-	{"ssl_session_new",	openssl_ssl_session_read},
-
-    /* conf handle */
-    {"conf_load",		openssl_conf_load	},
-	{"version",			openssl_version },
-
-	/* ocsp handle */
-	{"ocsp_request_read", openssl_ocsp_request_new},
-	{"ocsp_request_new", openssl_ocsp_request_new},
-	{"ocsp_response_new", openssl_ocsp_response},
-	{"ocsp_response_read",openssl_ocsp_response},
-
-    {NULL, NULL}
-};
-/* }}} */
-#if 0
-static int ssl_stream_data_index;
-
-
-/* {{{ openssl safe_mode & open_basedir checks */
-inline static int openssl_safe_mode_chk(char *filename)
-{
-    if (PG(safe_mode) && (!checkuid(filename, NULL, CHECKUID_CHECK_FILE_AND_DIR))) {
-        return -1;
-    }
-    if (check_open_basedir(filename)) {
-        return -1;
-    }
-
-    return 0;
-}
-/* }}} */
-
+  luaopen_ec(L);
+  lua_setfield(L, -2, "ec");
 #endif
 
+  luaopen_x509(L);
+  lua_setfield(L, -2, "x509");
 
+  luaopen_pkcs7(L);
+  lua_setfield(L, -2, "pkcs7");
 
-#if OPENSSL_VERSION_NUMBER >= 0x10000002L
-int openssl_config_check_syntax(const char * section_label, const char * config_filename, const char * section, LHASH_OF(CONF_VALUE) * config) /* {{{ */
-#else
-int openssl_config_check_syntax(const char * section_label, const char * config_filename, const char * section, LHASH * config)
-#endif
-{
-    X509V3_CTX ctx;
+  luaopen_pkcs12(L);
+  lua_setfield(L, -2, "pkcs12");
 
-    X509V3_set_ctx_test(&ctx);
-    X509V3_set_conf_lhash(&ctx, config);
-    if (!X509V3_EXT_add_conf(config, &ctx, (char *)section, NULL)) {
-        printf("Error loading %s section %s of %s",
-               section_label,
-               section,
-               config_filename);
-        return -1;
-    }
-    return 0;
-}
+  luaopen_ocsp(L);
+  lua_setfield(L, -2, "ocsp");
 
-
-
-/* {{{ proto mixed openssl_error_string(void)
-   Returns a description of the last error, and alters the index of the error messages. Returns false when the are no more messages */
-LUA_FUNCTION(openssl_error_string)
-{
-    char buf[1024];
-    unsigned long val;
-    int verbose = lua_toboolean(L,1);
-    int ret = 0;
-    val = ERR_get_error();
-    if (val) {
-        lua_pushinteger(L,val);
-	ERR_error_string_n(val, buf,sizeof(buf));
-        lua_pushstring(L, buf);
-	ret = 2;
-    }
-    if(verbose)
-    {
-        ERR_print_errors_fp(stderr);
-    }
-    ERR_clear_error();
-
-    return ret;
-}
-/* }}} */
-
-/* {{{ proto signature openssl_sign(string data,  evp_pkey key [, digest md|string md_alg=SHA1]) ->string
-   Signs data */
-LUA_FUNCTION(openssl_sign)
-{
-    size_t data_len;
-    const char * data = luaL_checklstring(L,1,&data_len);
-    EVP_PKEY *pkey = CHECK_OBJECT(2,EVP_PKEY,"openssl.evp_pkey");
-
-    int siglen;
-    unsigned char *sigbuf;
-
-    EVP_MD_CTX md_ctx;
-
-    int ret = 0;
-    int top = lua_gettop(L);
-
-    const EVP_MD *mdtype = NULL;
-    if(top>2) {
-        if(lua_isstring(L,3))
-            mdtype = EVP_get_digestbyname(lua_tostring(L,3));
-        else if(lua_isuserdata(L,3))
-            mdtype = CHECK_OBJECT(3,EVP_MD,"openssl.evp_digest");
-        else
-            luaL_error(L, "#3 must be nil, string, or openssl.evp_digest object");
-    }
-    if(!mdtype)
-        mdtype = EVP_get_digestbynid(OPENSSL_ALGO_SHA1);
-
-    siglen = EVP_PKEY_size(pkey);
-    sigbuf = malloc(siglen + 1);
-
-    EVP_SignInit(&md_ctx, mdtype);
-    EVP_SignUpdate(&md_ctx, data, data_len);
-    if (EVP_SignFinal (&md_ctx, sigbuf,(unsigned int *)&siglen, pkey)) {
-        lua_pushlstring(L,(char *)sigbuf, siglen);
-        ret = 1;
-    }
-    free(sigbuf);
-    EVP_MD_CTX_cleanup(&md_ctx);
-    return ret;
-}
-/* }}} */
-
-/* {{{ proto int openssl_verify(string data, string signature, evp_pkey key[, digest md|string md_alg=SHA1]) ->boolean
-   Verifys data */
-LUA_FUNCTION(openssl_verify)
-{
-    size_t data_len, signature_len;
-    const char* data = luaL_checklstring(L,1,&data_len);
-    const char* signature = luaL_checklstring(L,2,&signature_len);
-
-    EVP_PKEY *pkey = CHECK_OBJECT(3,EVP_PKEY,"openssl.evp_pkey");
-    int top = lua_gettop(L);
-    int err;
-    EVP_MD_CTX     md_ctx;
-
-    const EVP_MD *mdtype = NULL;
-    if(top>3) {
-        if(lua_isstring(L,4))
-            mdtype = EVP_get_digestbyname(lua_tostring(L,4));
-        else if(lua_isuserdata(L,4))
-            mdtype = CHECK_OBJECT(4,EVP_MD,"openssl.evp_digest");
-        else
-            luaL_error(L, "#4 must be nil, string, or openssl.evp_digest object");
-    }
-    if(!mdtype)
-        mdtype = EVP_get_digestbynid(OPENSSL_ALGO_SHA1);
-
-
-    EVP_VerifyInit   (&md_ctx, mdtype);
-    EVP_VerifyUpdate (&md_ctx, data, data_len);
-    err = EVP_VerifyFinal (&md_ctx, (unsigned char *)signature, signature_len, pkey);
-    EVP_MD_CTX_cleanup(&md_ctx);
-    lua_pushinteger(L,err);
-
-    return 1;
-}
-/* }}} */
-
-
-/* {{{ proto sealdata,ekeys openssl_seal(string data, tables pubkeys [, cipher enc|string md_alg=RC4])
-   Seals data */
-LUA_FUNCTION(openssl_seal)
-{
-    size_t data_len;
-    const char * data = luaL_checklstring(L,1,&data_len);
-
-    EVP_PKEY **pkeys;
-
-    int i, len1, len2, *eksl, nkeys;
-    unsigned char *buf;
-    unsigned char **eks;
-
-    const EVP_CIPHER *cipher = NULL;
-    EVP_CIPHER_CTX ctx;
-    int ret = 0;
-    int top = lua_gettop(L);
-
-
-    luaL_checktype(L,2, LUA_TTABLE);
-    nkeys = lua_objlen(L,2);
-    if (!nkeys) {
-        luaL_error(L,"#2 argument to openssl_seal() must be a non-empty table");
-    }
-
-    if(top>2) {
-        if(lua_isstring(L,3))
-            cipher = EVP_get_cipherbyname(lua_tostring(L,3));
-        else if(lua_isuserdata(L,3))
-            cipher = CHECK_OBJECT(3,EVP_CIPHER,"openssl.evp_cipher");
-        else
-            luaL_error(L, "#3 argument must be nil, string, or openssl.evp_cipher object");
-    }
-    if(!cipher)
-        cipher = EVP_rc4();
-
-    pkeys = malloc(nkeys*sizeof(*pkeys));
-    eksl = malloc(nkeys*sizeof(*eksl));
-    eks = malloc(nkeys*sizeof(*eks));
-    memset(eks, 0, sizeof(*eks) * nkeys);
-
-    /* get the public keys we are using to seal this data */
-    for(i=0; i<nkeys; i++) {
-        lua_rawgeti(L,2,i+1);
-
-        pkeys[i] =  CHECK_OBJECT(-1,EVP_PKEY, "openssl.evp_pkey");
-        if (pkeys[i] == NULL) {
-            luaL_error(L,"not a public key (%dth member of pubkeys)", i+1);
-        }
-        eks[i] = malloc(EVP_PKEY_size(pkeys[i]) + 1);
-        lua_pop(L,1);
-    }
-    if (!EVP_EncryptInit(&ctx,cipher,NULL,NULL)) {
-        luaL_error(L,"EVP_EncryptInit failed");
-    }
-
-    /* allocate one byte extra to make room for \0 */
-    len1 = data_len + EVP_CIPHER_CTX_block_size(&ctx)+1;
-    buf = malloc(data_len + EVP_CIPHER_CTX_block_size(&ctx));
-    if (!EVP_SealInit(&ctx, cipher, eks, eksl, NULL, pkeys, nkeys) || !EVP_SealUpdate(&ctx, buf, &len1, (unsigned char *)data, data_len)) {
-        free(buf);
-        luaL_error(L,"EVP_SealInit failed");
-    }
-
-    EVP_SealFinal(&ctx, buf + len1, &len2);
-
-    if (len1 + len2 > 0) {
-        buf[len1 + len2] = '\0';
-        lua_pushlstring(L,(const char*)buf,len1 + len2);
-
-        lua_newtable(L);
-        for (i=0; i<nkeys; i++) {
-            eks[i][eksl[i]] = '\0';
-            lua_pushlstring(L, (const char*)eks[i], eksl[i]);
-            free(eks[i]);
-            eks[i] = NULL;
-            lua_rawseti(L,-2, i+1);
-        }
-        ret = 2;
-
-    }
-
-    free(buf);
-    free(eks);
-    free(eksl);
-    free(pkeys);
-    return ret;
-}
-/* }}} */
-
-/* {{{ proto opendata openssl_open(string data, string ekey, mixed privkey)
-   Opens data */
-LUA_API LUA_FUNCTION(openssl_open)
-{
-    size_t data_len, ekey_len;
-    const char * data = luaL_checklstring(L, 1, &data_len);
-    const char * ekey = luaL_checklstring(L, 2, &ekey_len);
-    EVP_PKEY *pkey =  CHECK_OBJECT(3,EVP_PKEY, "openssl.evp_pkey");
-    int top = lua_gettop(L);
-
-    int len1, len2 = 0;
-    unsigned char *buf;
-
-    EVP_CIPHER_CTX ctx;
-    const EVP_CIPHER *cipher = NULL;
-
-    if(top>3) {
-        if(lua_isstring(L,4))
-            cipher = EVP_get_cipherbyname(lua_tostring(L,4));
-        else if(lua_isuserdata(L,4))
-            cipher = CHECK_OBJECT(4,EVP_CIPHER,"openssl.evp_cipher");
-        else
-            luaL_error(L, "#4 argument must be nil, string, or openssl.evp_cipher object");
-    }
-    if(!cipher)
-        cipher = EVP_rc4();
-
-    len1 = data_len + 1;
-    buf = malloc(len1);
-
-    if (EVP_OpenInit(&ctx, cipher, (unsigned char *)ekey, ekey_len, NULL, pkey) && EVP_OpenUpdate(&ctx, buf, &len1, (unsigned char *)data, data_len))
-	{
-		len2 = data_len - len1;
-	    if (!EVP_OpenFinal(&ctx, buf + len1, &len2) || (len1 + len2 == 0))
-		{
-			luaL_error(L,"EVP_OpenFinal() failed.");
-			free(buf);
-			return 0;
-		}
-	}
-	else
-	{
-		luaL_error(L,"EVP_OpenInit() failed.");
-		free(buf);
-		return 0;
-	}
-
-    buf[len1 + len2] = '\0';
-    lua_pushlstring(L, (const char*)buf, len1 + len2);
-    free(buf);
-    return 1;
-}
-/* }}} */
-
-/* SSL verification functions */
-
-#define GET_VER_OPT(name)               (stream->context && 0 == stream_context_get_option(stream->context, "ssl", name, &val))
-#define GET_VER_OPT_STRING(name, str)   if (GET_VER_OPT(name)) { convert_to_string_ex(val); str = Z_STRVAL_PP(val); }
-#if 0
-static int verify_callback(int preverify_ok, X509_STORE_CTX *ctx) /* {{{ */
-{
-    void *stream;
-    SSL *ssl;
-    X509 *err_cert;
-    int err, depth, ret;
-
-    ret = preverify_ok;
-
-    /* determine the status for the current cert */
-    err_cert = X509_STORE_CTX_get_current_cert(ctx);
-    err = X509_STORE_CTX_get_error(ctx);
-    depth = X509_STORE_CTX_get_error_depth(ctx);
-
-    /* conjure the stream & context to use */
-    ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
-    stream = SSL_get_ex_data(ssl, ssl_stream_data_index);
-
-    /* if allow_self_signed is set, make sure that verification succeeds */
-    if (err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT && GET_VER_OPT("allow_self_signed") && zval_is_true(*val)) {
-        ret = 1;
-    }
-
-    /* check the depth */
-    if (GET_VER_OPT("verify_depth")) {
-        convert_to_long_ex(val);
-
-        if (depth > Z_LVAL_PP(val)) {
-            ret = 0;
-            X509_STORE_CTX_set_error(ctx, X509_V_ERR_CERT_CHAIN_TOO_LONG);
-        }
-    }
-
-    return ret;
-
-}
-/* }}} */
-
-int openssl_apply_verification_policy(SSL *ssl, X509 *peer, stream *stream) /* {{{ */
-{
-    zval **val = NULL;
-    char *cnmatch = NULL;
-    X509_NAME *name;
-    char buf[1024];
-    int err;
-
-    /* verification is turned off */
-    if (!(GET_VER_OPT("verify_peer") && zval_is_true(*val))) {
-        return 0;
-    }
-
-    if (peer == NULL) {
-        error_docref(NULL, E_WARNING, "Could not get peer certificate");
-        return -1;
-    }
-
-    err = SSL_get_verify_result(ssl);
-    switch (err) {
-    case X509_V_OK:
-        /* fine */
-        break;
-    case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
-        if (GET_VER_OPT("allow_self_signed") && zval_is_true(*val)) {
-            /* allowed */
-            break;
-        }
-        /* not allowed, so fall through */
-    default:
-        error_docref(NULL, E_WARNING, "Could not verify peer: code:%d %s", err, X509_verify_cert_error_string(err));
-        return -1;
-    }
-
-    /* if the cert passed the usual checks, apply our own local policies now */
-
-    name = X509_get_subject_name(peer);
-
-    /* Does the common name match ? (used primarily for https://) */
-    GET_VER_OPT_STRING("CN_match", cnmatch);
-    if (cnmatch) {
-        int match = 0;
-        int name_len = X509_NAME_get_text_by_NID(name, NID_commonName, buf, sizeof(buf));
-
-        if (name_len == -1) {
-            error_docref(NULL, E_WARNING, "Unable to locate peer certificate CN");
-            return -1;
-        } else if (name_len != strlen(buf)) {
-            error_docref(NULL, E_WARNING, "Peer certificate CN=`%.*s' is malformed", name_len, buf);
-            return -1;
-        }
-
-        match = strcmp(cnmatch, buf) == 0;
-        if (!match && strlen(buf) > 3 && buf[0] == '*' && buf[1] == '.') {
-            /* Try wildcard */
-
-            if (strchr(buf+2, '.')) {
-                char *tmp = strstr(cnmatch, buf+1);
-
-                match = tmp && strcmp(tmp, buf+2) && tmp == strchr(cnmatch, '.');
-            }
-        }
-
-        if (!match) {
-            /* didn't match */
-            error_docref(NULL, E_WARNING, "Peer certificate CN=`%.*s' did not match expected CN=`%s'", name_len, buf, cnmatch);
-            return -1;
-        }
-    }
-
-    return 0;
-}
-/* }}} */
-
-static int passwd_callback(char *buf, int num, int verify, void *data) /* {{{ */
-{
-    stream *stream = (stream *)data;
-    zval **val = NULL;
-    char *passphrase = NULL;
-    /* TODO: could expand this to make a callback into Lua user-space */
-
-    GET_VER_OPT_STRING("passphrase", passphrase);
-
-    if (passphrase) {
-        if (Z_STRLEN_PP(val) < num - 1) {
-            memcpy(buf, Z_STRVAL_PP(val), Z_STRLEN_PP(val)+1);
-            return Z_STRLEN_PP(val);
-        }
-    }
-    return 0;
-}
-/* }}} */
-
-SSL *SSL_new_from_context(SSL_CTX *ctx, stream *stream) /* {{{ */
-{
-    zval **val = NULL;
-    char *cafile = NULL;
-    char *capath = NULL;
-    char *certfile = NULL;
-    char *cipherlist = NULL;
-    int ok = 1;
-
-    ERR_clear_error();
-
-    /* look at context options in the stream and set appropriate verification flags */
-    if (GET_VER_OPT("verify_peer") && zval_is_true(*val)) {
-
-        /* turn on verification callback */
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, verify_callback);
-
-        /* CA stuff */
-        GET_VER_OPT_STRING("cafile", cafile);
-        GET_VER_OPT_STRING("capath", capath);
-
-        if (cafile || capath) {
-            if (!SSL_CTX_load_verify_locations(ctx, cafile, capath)) {
-                error_docref(NULL, E_WARNING, "Unable to set verify locations `%s' `%s'", cafile, capath);
-                return NULL;
-            }
-        }
-
-        if (GET_VER_OPT("verify_depth")) {
-            convert_to_long_ex(val);
-            SSL_CTX_set_verify_depth(ctx, Z_LVAL_PP(val));
-        }
-    } else {
-        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
-    }
-
-    /* callback for the passphrase (for localcert) */
-    if (GET_VER_OPT("passphrase")) {
-        SSL_CTX_set_default_passwd_cb_userdata(ctx, stream);
-        SSL_CTX_set_default_passwd_cb(ctx, passwd_callback);
-    }
-
-    GET_VER_OPT_STRING("ciphers", cipherlist);
-    if (!cipherlist) {
-        cipherlist = "DEFAULT";
-    }
-    if (SSL_CTX_set_cipher_list(ctx, cipherlist) != 1) {
-        return NULL;
-    }
-
-    GET_VER_OPT_STRING("local_cert", certfile);
-    if (certfile) {
-        X509 *cert = NULL;
-        EVP_PKEY *key = NULL;
-        SSL *tmpssl;
-        char resolved_path_buff[MAXPATHLEN];
-        const char * private_key = NULL;
-
-        if (VCWD_REALPATH(certfile, resolved_path_buff)) {
-            /* a certificate to use for authentication */
-            if (SSL_CTX_use_certificate_chain_file(ctx, resolved_path_buff) != 1) {
-                error_docref(NULL, E_WARNING, "Unable to set local cert chain file `%s'; Check that your cafile/capath settings include details of your certificate and its issuer", certfile);
-                return NULL;
-            }
-            GET_VER_OPT_STRING("local_pk", private_key);
-
-            if (private_key) {
-                char resolved_path_buff_pk[MAXPATHLEN];
-                if (VCWD_REALPATH(private_key, resolved_path_buff_pk)) {
-                    if (SSL_CTX_use_PrivateKey_file(ctx, resolved_path_buff_pk, SSL_FILETYPE_PEM) != 1) {
-                        error_docref(NULL, E_WARNING, "Unable to set private key file `%s'", resolved_path_buff_pk);
-                        return NULL;
-                    }
-                }
-            } else {
-                if (SSL_CTX_use_PrivateKey_file(ctx, resolved_path_buff, SSL_FILETYPE_PEM) != 1) {
-                    error_docref(NULL, E_WARNING, "Unable to set private key file `%s'", resolved_path_buff);
-                    return NULL;
-                }
-            }
-
-            tmpssl = SSL_new(ctx);
-            cert = SSL_get_certificate(tmpssl);
-
-            if (cert) {
-                key = X509_get_pubkey(cert);
-                EVP_PKEY_copy_parameters(key, SSL_get_privatekey(tmpssl));
-                EVP_PKEY_free(key);
-            }
-            SSL_free(tmpssl);
-
-            if (!SSL_CTX_check_private_key(ctx)) {
-                error_docref(NULL, E_WARNING, "Private key does not match certificate!");
-            }
-        }
-    }
-    if (ok) {
-        SSL *ssl = SSL_new(ctx);
-
-        if (ssl) {
-            /* map SSL => stream */
-            SSL_set_ex_data(ssl, ssl_stream_data_index, stream);
-        }
-        return ssl;
-    }
-
-    return NULL;
-}
-/* }}} */
-
-#endif
-
-
-/* {{{ proto string openssl_dh_compute_key(string pub_key, resource dh_key)
-   Computes shared sicret for public value of remote DH key and local DH key */
-LUA_FUNCTION(openssl_dh_compute_key)
-{
-    const char *pub_str;
-    size_t pub_len;
-    EVP_PKEY *pkey;
-    BIGNUM *pub;
-    char *data;
-    int len;
-    int ret = 0;
-
-    pub_str = luaL_checklstring(L,1,&pub_len);
-    pkey = CHECK_OBJECT(2,EVP_PKEY,"openssl.evp_pkey");
-
-    if (!pkey || EVP_PKEY_type(pkey->type) != EVP_PKEY_DH || !pkey->pkey.dh) {
-        luaL_error(L,"paramater 2 must dh key");
-    }
-
-    pub = BN_bin2bn((unsigned char*)pub_str, pub_len, NULL);
-
-    data = malloc(DH_size(pkey->pkey.dh) + 1);
-    len = DH_compute_key((unsigned char*)data, pub, pkey->pkey.dh);
-
-    if (len >= 0) {
-        data[len] = 0;
-        lua_pushlstring(L,data,len);
-        ret = 1;
-    } else {
-        free(data);
-        ret = 0;
-    }
-
-    BN_free(pub);
-    return ret;
-}
-/* }}} */
-
-int luaopen_bn(lua_State *L);
-
-LUA_API int luaopen_plugin_openssl(lua_State*L)
-{
-    char * config_filename;
-
-#if 0
-	OpenSSL_add_all_ciphers();
-	OpenSSL_add_all_digests();
-	SSL_library_init();
-#else
-	/* This code was written by Corona Labs to replace the original code up above.
-	 * It fixes a crash which can occur when initializing OpenSSL more than once.
-	 * Note: We can detect if the library has not been initialized if a SHA1 digest hasn't been loaded yet.
-	 */
-	if (EVP_get_digestbyname(SSL_TXT_SHA1) == NULL)
-	{
-		OpenSSL_add_all_ciphers();
-		OpenSSL_add_all_digests();
-		SSL_library_init();
-	}
-#endif
-
-	/* This line was added by Corona Labs to prevent a crash which can happen when loading strings more than once. */
-	ERR_free_strings();
-
-    ERR_load_ERR_strings();
-    ERR_load_crypto_strings();
-    ERR_load_EVP_strings();
-    ERR_load_SSL_strings();
-
-#if 0
-    ENGINE_load_dynamic();
-    ENGINE_load_openssl();
-#else
-	/* This code was written by Corona Labs to replace the original code up above.
-	 * It fixes a crash which can occur when loading OpenSSL's engines more than once.
-	 */
-	if (ENGINE_by_id("dynamic") == NULL)
-	{
-		ENGINE_load_dynamic();
-	}
-	if (ENGINE_by_id("openssl") == NULL)
-	{
-		ENGINE_load_openssl();
-	}
-#endif
-
-    /* Determine default SSL configuration file */
-    config_filename = getenv("OPENSSL_CONF");
-    if (config_filename == NULL) {
-        config_filename = getenv("SSLEAY_CONF");
-    }
-
-    /* default to 'openssl.cnf' if no environment variable is set */
-    if (config_filename == NULL) {
-        snprintf(default_ssl_conf_filename, sizeof(default_ssl_conf_filename), "%s/%s",
-                 X509_get_default_cert_area(),
-                 "openssl.cnf");
-    } else {
-        strncpy(default_ssl_conf_filename, config_filename, sizeof(default_ssl_conf_filename));
-    }
-
-    openssl_register_pkey(L);
-    openssl_register_x509(L);
-    openssl_register_csr(L);
-    openssl_register_digest(L);
-    openssl_register_cipher(L);
-    openssl_register_sk_x509(L);
-    openssl_register_bio(L);
-    openssl_register_crl(L);
 #ifdef OPENSSL_HAVE_TS
-    openssl_register_ts(L);
+  /* timestamp handling */
+  luaopen_ts(L);
+  lua_setfield(L, -2, "ts");
 #endif
-    openssl_register_conf(L);
-    openssl_register_pkcs7(L);
-    openssl_register_misc(L);
-	openssl_register_engine(L);
-	openssl_register_ssl(L);
-	openssl_register_ocsp(L);
 
-#if LUA_VERSION_NUM==501
-    luaL_register(L,"openssl",eay_functions);
-#elif LUA_VERSION_NUM==502
-    lua_newtable(L);
-    luaL_setfuncs(L, eay_functions, 0);
+  luaopen_cms(L);
+  lua_setfield(L, -2, "cms");
+
+  luaopen_ssl(L);
+  lua_setfield(L, -2, "ssl");
+
+  /* third part */
+  luaopen_bn(L);
+  lua_setfield(L, -2, "bn");
+
+  luaopen_rsa(L);
+  lua_setfield(L, -2, "rsa");
+  luaopen_dsa(L);
+  lua_setfield(L, -2, "dsa");
+  luaopen_dh(L);
+  lua_setfield(L, -2, "dh");
+
+#ifndef OPENSSL_NO_SRP
+  luaopen_srp(L);
+  lua_setfield(L, -2, "srp");
 #endif
-	setNamedIntegers(L, consts);
 
-	/* third part */
-	luaopen_bn(L);
-	lua_setfield(L, -2, "bn");
+#ifdef ENABLE_OPENSSL_GLOBAL
+  lua_pushvalue(L, -1);
+  lua_setglobal(L, "openssl");
+#endif
 
-	//// From luasec.
-	//
-	{
-		int top = lua_gettop( L );
-		{
-			// IMPORTANT: These two functions leave a total of 4 objects on the Lua
-			// stack. This is BAD. We only want to return ONE "openssl" object.
-			// A GOOD thing about these functions is that the objects they create
-			// are global and won't be garbage collected. Therefore, we can simply
-			// reset the top of the Lua stack with lua_settop() at the end of this
-			// function.
-			luaopen_ssl_core(L);
-            luaopen_ssl_context(L);
-            luaopen_ssl_x509(L);
-
-			// These functions DON'T leave anything on the Lua stack. They only
-			// register objects that can be require'd later.
-			CoronaLuaRegisterModuleLoader( L, "plugin_luasec_ssl", luaopen_plugin_luasec_ssl, 0 );
-			CoronaLuaRegisterModuleLoader( L, "plugin_luasec_https", luaopen_plugin_luasec_https, 0 ); // CoronaPluginLuaLoad_plugin_luasec_https, 0 );
-			//
-			////
-		}
-		lua_settop( L, top );
-	}
-
-	// The total number of object put on the Lua stack by this function.
-    return 1;
+  return 1;
 }
-
-/*
- * Local variables:
- * tab-width: 8
- * c-basic-offset: 8
- * End:
- * vim600: sw=4 ts=4 fdm=marker
- * vim<600: sw=4 ts=4
- */
