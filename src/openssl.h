@@ -1,3 +1,8 @@
+// Solar2D compatible: reduce the size of the Win32 header files
+#if defined(_WIN32) || defined(_WIN64)
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 /*=========================================================================*\
 * x509 routines
 * lua-openssl toolkit
@@ -116,7 +121,7 @@ __pragma(warning(pop))
 
 int openssl_s2i_revoke_reason(const char*s);
 
-LUALIB_API LUA_FUNCTION(luaopen_openssl);
+LUALIB_API LUA_FUNCTION(luaopen_plugin_opensslv3);
 LUA_FUNCTION(luaopen_digest);
 LUA_FUNCTION(luaopen_hmac);
 LUA_FUNCTION(luaopen_cipher);

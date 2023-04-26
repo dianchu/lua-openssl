@@ -1,6 +1,19 @@
 
 ---
 
+2023/4/18:
+
+	This repo was last merge updated on 2023/4/18 from:
+
+		https://github.com/zhaozg/lua-openssl
+
+			commit 049e55f48b7947f7a1b63ff11144f4a82d2336dd
+			Date:   Wed Mar 22 12:13:40 2023 +0800
+
+	Since lua-openssl has big changed, APIs incompatible with previous plugin_openssl,
+	rename to plugin_opensslv3.
+---
+
 2013/4/18:
 
 	This repo was last updated on 2013/4/18 from:

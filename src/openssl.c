@@ -13,6 +13,37 @@ Openssl binding for Lua, provide openssl full function in lua.
 #include <openssl/opensslconf.h>
 #include "private.h"
 
+// Solar2D compatible start
+//// From luasec.
+//
+#include "../../sdk-luasocket/src/x509.h"
+#include "../../sdk-luasocket/src/context.h"
+#if ! defined(WIN32)
+#include "../../sdk-luasocket/src/ssl.h"
+#else
+int luaopen_ssl_core(lua_State *L);
+#endif
+
+#include "CoronaLua.h"
+#include "CoronaMacros.h"
+
+CORONA_EXPORT int CoronaPluginLuaLoad_plugin_luasec_ssl(lua_State *L);
+CORONA_EXPORT int CoronaPluginLuaLoad_plugin_luasec_https(lua_State *L);
+
+int luaopen_plugin_luasec_ssl(lua_State *L)
+{
+  return CoronaLuaOpenModule(L, CoronaPluginLuaLoad_plugin_luasec_ssl);
+}
+
+int luaopen_plugin_luasec_https(lua_State *L)
+{
+  return CoronaLuaOpenModule(L, CoronaPluginLuaLoad_plugin_luasec_https);
+}
+//
+////
+// Solar2D compatible end
+
+
 /***
 get lua-openssl version
 @function version
@@ -533,7 +564,8 @@ static int luaclose_openssl(lua_State *L)
   return 0;
 }
 
-LUALIB_API int luaopen_openssl(lua_State*L)
+// Solar2D compatible: change signature to fit Solar2D plug-in
+LUALIB_API int luaopen_plugin_opensslv3(lua_State*L)
 {
 #if defined(OPENSSL_THREADS) && !defined(OPENSSL_SYS_WIN32)
   (void) pthread_once(&openssl_is_initialized, openssl_initialize);
@@ -625,5 +657,33 @@ LUALIB_API int luaopen_openssl(lua_State*L)
   lua_setglobal(L, "openssl");
 #endif
 
+  // Solar2D compatible start
+  //// From luasec.
+  //
+  {
+    int top = lua_gettop(L);
+    {
+      // IMPORTANT: These two functions leave a total of 4 objects on the Lua
+      // stack. This is BAD. We only want to return ONE "openssl" object.
+      // A GOOD thing about these functions is that the objects they create
+      // are global and won't be garbage collected. Therefore, we can simply
+      // reset the top of the Lua stack with lua_settop() at the end of this
+      // function.
+      luaopen_ssl_core(L);
+      luaopen_ssl_context(L);
+      luaopen_ssl_x509(L);
+
+      // These functions DON'T leave anything on the Lua stack. They only
+      // register objects that can be require'd later.
+      CoronaLuaRegisterModuleLoader(L, "plugin_luasec_ssl", luaopen_plugin_luasec_ssl, 0);
+      CoronaLuaRegisterModuleLoader(L, "plugin_luasec_https", luaopen_plugin_luasec_https, 0); // CoronaPluginLuaLoad_plugin_luasec_https, 0 );
+      //
+      ////
+    }
+    lua_settop(L, top);
+  }
+
+  // The total number of object put on the Lua stack by this function.
+  // Solar2D compatible end
   return 1;
 }
