@@ -150,6 +150,15 @@ void openssl_add_method(const OBJ_NAME *name, void *arg);
 #define CHECK_OBJECT(n,type,name) *(type**)auxiliar_checkclass(L,name,n)
 #define CHECK_GROUP(n,type,name)  *(type**)auxiliar_checkgroup(L,name,n)
 
+/**
+ * `my_auxiliar_getclassudata` override `auxiliar_getclassudata` for `lua-openssl` usage.
+ * Solar2D core (libplayer.a) use older version luasocket's auxiliar.c,
+ * which use `luaL_checkudata` to implement auxiliar_getclassudata that will raise an error when classname not match,
+ * which `luaL_testudata` will not raise.
+ */
+void *my_auxiliar_getclassudata(lua_State *L, const char *classname, int objidx);
+#define auxiliar_getclassudata my_auxiliar_getclassudata
+
 static inline void* openssl_getclass(lua_State *L, const char* name, int idx)
 {
   void **p = (void**)auxiliar_getclassudata(L, name, idx);

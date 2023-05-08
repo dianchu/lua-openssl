@@ -39,6 +39,11 @@ int luaopen_plugin_luasec_https(lua_State *L)
 {
   return CoronaLuaOpenModule(L, CoronaPluginLuaLoad_plugin_luasec_https);
 }
+
+/* `my_auxiliar_getclassudata` override `auxiliar_getclassudata` for `lua-openssl` usage. */
+void *my_auxiliar_getclassudata(lua_State *L, const char *classname, int objidx) {
+    return luaL_testudata(L, objidx, classname);
+}
 //
 ////
 // Solar2D compatible end
